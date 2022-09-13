@@ -8,9 +8,10 @@
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
-            "program": "/mnt/default/zcodetasks/code/mogabr-codes/proj/main.py",
+            /// "program": "/mnt/default/zcodetasks/code/mogabr-codes/proj/main.py",
+            "program": "/mnt/default/zcodetasks/code/mogabr-codes/proj_git/gender_rewriting_WANLP/speaker_listener_classifier/main.py",
             "console": "integratedTerminal",
-            "args": ["--config_path", "./config.yml"],
+            "args": ["--config_path", "./speaker_listener_classifier/config.yml"],
             "justMyCode": true
         }
     ]
