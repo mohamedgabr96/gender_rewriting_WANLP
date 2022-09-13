@@ -30,9 +30,9 @@ def load_normal_data_speaker_listener(path, split="train", direction="MF", augme
             sentence_temp_list = []
         else:
             temp_line = line.strip("\n").split(" ")
-            if temp_line[2][1] == "M" or temp_line[2][1] == "F":
+            if len(temp_line[2]) == 2 and (temp_line[2][1] == "M" or temp_line[2][1] == "F"):
                 word = temp_line[1]
-                label = 1 if temp_line[2][1] == "M" else "F"
+                label = 1 if temp_line[2][1] == "M" else 2
             else:
                 word = temp_line[1]
                 label = 0
@@ -51,9 +51,9 @@ def load_normal_data_speaker_listener(path, split="train", direction="MF", augme
             sentence_temp_list = []
         else:
             temp_line = line.strip("\n").split(" ")
-            if temp_line[2][1] == "M" or temp_line[2][1] == "F":
+            if len(temp_line[2]) == 2 and (temp_line[2][1] == "M" or temp_line[2][1] == "F"):
                 word = temp_line[1]
-                label = 1 if temp_line[2][1] == "M" else "F"
+                label = 1 if temp_line[2][1] == "M" else 2
             else:
                 word = temp_line[1]
                 label = 0
