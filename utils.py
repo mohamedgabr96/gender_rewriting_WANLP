@@ -43,8 +43,9 @@ def create_dataloader(config, tokenizer, split="train"):
     tokenized_target = tokenize_data(config, target_data, tokenizer)
     dataset = GenderDataset(config, tokenized_source, tokenized_target, tokenizer.pad_token_id)
 
+    shuffle_param = True if split == "train" else False
     params = {'batch_size': config.batch_size,
-          'shuffle': True}
+          'shuffle': shuffle_param}
 
     dataloader = torch.utils.data.DataLoader(dataset, **params)
 

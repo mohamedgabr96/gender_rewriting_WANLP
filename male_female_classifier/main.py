@@ -1,19 +1,19 @@
 import torch
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+from transformers import AutoModelForTokenClassification, AutoTokenizer
 from argparse import Namespace
 import argparse
 import os
-from generate import generate
-from utils import yaml_loader, create_dataloaders
+import sys
+sys.path.append("../")
+from utils_male_female import create_dataloaders, yaml_loader
 import wandb
-from m2_calculation import calculate_m2
 from tqdm import tqdm, trange
 
 def main(config):
     ### Dataloading
 
-    ### Model Loading
-    wandb.init(project="my-gender-rewrite-project",
+    ## Model Loading
+    wandb.init(project="my-gender-rewrite-project-male_female",
             name=f"experiment_{config.exp_name}", 
             # Track hyperparameters and run metadata
             config={
@@ -32,7 +32,11 @@ def main(config):
 
     train_dataloader, dev_dataloader, test_dataloader = create_dataloaders(config, tokenizer)
 
-    model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name).to(config.device)
+    label_names = ["NONE", "MALE", "FEMALE", "PAD"]
+    id2label = {str(i): label for i, label in enumerate(label_names)}
+    label2id = {v: k for k, v in id2label.items()}
+
+    model = AutoModelForTokenClassification.from_pretrained(config.model_name, id2label=id2label, label2id=label2id).to(config.device)
 
     ## Criterion and Schedulers
   
@@ -40,7 +44,6 @@ def main(config):
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
 
-    criterion = torch.nn.NLLLoss()
 
     no_steps = 0
     model.train()
@@ -50,28 +53,19 @@ def main(config):
         with tqdm(train_dataloader, unit="batch") as tepoch:
             for batch in tepoch:
                 tepoch.set_description(f"Epoch {epoch}")
-                training_loss_val = training_loop(model, batch, optimizer, criterion, scheduler)
+                training_loss_val = training_loop(model, batch, optimizer, scheduler)
                 no_steps+=1
 
                 wandb.log({"Training Loss": training_loss_val})
 
                 if no_steps % config.eval_every == 0:
-                    dev_loss_val, output_generation = eval_loop(model, dev_dataloader, tokenizer, generate_sents=config.calc_score_at_eval)
-                    output_generation = [x.replace("<s>", "").replace("<s>", "").replace("<s>", "") for x in output_generation]
+                    dev_loss_val, accuracy, accuracy_sl_only = eval_loop(model, dev_dataloader, tokenizer)
                     wandb.log({"Dev Loss": dev_loss_val})
-                    if config.calc_score_at_eval:
-                        p, r, f1 = calculate_m2(output_generation, config.m2_edits_path, split='dev', specific_direction=config.speak_listen_mode)
-
-                    print("Precision: " + str(p))
-                    print("Recall: " + str(r))
-                    print("F-0.5: " + str(f1))
-                    print("Dev Loss: " + str(dev_loss_val))
-
-                    wandb.log({"Precision": p, "Recall": r, "F-0.5": f1})
+                   
+                    wandb.log({"Accuracy": accuracy, "Accuracy Speaker Listener": accuracy_sl_only})
 
                     if dev_loss_val < previous_dev_loss:
                         save_model(model, config.model_saves_path + "_" + config.exp_name, no_steps)
-                        save_generated_output(output_generation, config.model_saves_path + "_" + config.exp_name, no_steps)
                         
                     previous_dev_loss = dev_loss_val
 
@@ -82,11 +76,11 @@ def main(config):
 
     print("Done")
 
-def training_loop(model, batch, optimizer, criterion, scheduler):
+def training_loop(model, batch, optimizer, scheduler):
 
     optimizer.zero_grad()
 
-    model_output = model(input_ids=batch[0], attention_mask=batch[2], labels=batch[1])
+    model_output = model(input_ids=batch[0], labels=batch[1])
 
     loss = model_output.loss
 
@@ -100,19 +94,45 @@ def eval_loop(model, dev_loader, tokenizer, generate_sents=False):
     
     no_batches = 0
     accum_loss = 0
+
+    total_correct_labels = 0
+    total_labels =  0
+
+    total_correct_labels_sl_only = 0
+    total_labels_sl_only =  0
+
     for batch in tqdm(dev_loader): 
-        model_output = model(input_ids=batch[0], attention_mask=batch[2], labels=batch[1])
+        model_output = model(input_ids=batch[0], labels=batch[1])
         no_batches += 1
         accum_loss += model_output.loss.item()
+        
+        logits_argmax = torch.argmax(model_output.logits, axis=2)
+        labels=batch[1]
 
-    output_generation = None
-    if generate_sents:
-        output_generation = generate(model, dev_loader, tokenizer)
+        ## With the None
+        labels_to_attend_on = labels != 3
+        correct_labels = labels_to_attend_on & (logits_argmax == labels)
+        no_correct_labels = int(sum(sum(correct_labels.to(int))).cpu().detach().numpy())
+        no_labels = int(sum(sum(labels_to_attend_on.to(int))).cpu().detach().numpy())
 
+        total_correct_labels += no_correct_labels
+        total_labels += no_labels
+
+        # Without the None
+        labels_to_attend_on = (labels != 3) & (labels != 0)
+        correct_labels = labels_to_attend_on & (logits_argmax == labels)
+        no_correct_labels_sl_only = int(sum(sum(correct_labels.to(int))).cpu().detach().numpy())
+        no_labels_sl_only = int(sum(sum(labels_to_attend_on.to(int))).cpu().detach().numpy())
+        
+        total_correct_labels_sl_only += no_correct_labels_sl_only
+        total_labels_sl_only +=  no_labels_sl_only
+
+    accuracy_all = total_correct_labels / total_labels
+    accuracy_sl_only = total_correct_labels_sl_only / total_labels_sl_only
 
     model.train()
 
-    return accum_loss / no_batches, output_generation
+    return accum_loss / no_batches, accuracy_all, accuracy_sl_only
 
 
 def save_model(model, path, step_no):
@@ -122,15 +142,7 @@ def save_model(model, path, step_no):
 
     model.save_pretrained(path_with_step)
 
-def save_generated_output(generated_data, path, step_no):
-    path_with_step = os.path.join(path, "dev_" + str(step_no))
-    if not os.path.exists(path_with_step):
-        os.makedirs(path_with_step)
 
-    path_with_file = os.path.join(path_with_step, "generated_dev_data.txt")
-    with open(path_with_file, encoding="utf-8", mode="w") as file_opened:
-        for line in generated_data:
-            file_opened.write(line + "\n")
 
 
 if __name__ == "__main__":
