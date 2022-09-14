@@ -8,23 +8,25 @@ from utils import yaml_loader, create_dataloaders
 import wandb
 from m2_calculation import calculate_m2
 from tqdm import tqdm, trange
+from focal_loss import FocalLoss
 
 def main(config):
     ### Dataloading
 
     ### Model Loading
-    wandb.init(project="my-gender-rewrite-project",
-            name=f"experiment_{config.exp_name}", 
-            # Track hyperparameters and run metadata
-            config={
-            "learning_rate": config.learning_rate,
-            "model_name": config.model_name,
-            "speak_listen_mode": config.speak_listen_mode,
-            "max_length": config.max_length,
-            "batch_size": config.batch_size,
-            "eval_every": config.eval_every,
-            "epochs": config.no_epochs,
-            })
+    if config.wandb:
+        wandb.init(project="my-gender-rewrite-project",
+                name=f"experiment_{config.exp_name}", 
+                # Track hyperparameters and run metadata
+                config={
+                "learning_rate": config.learning_rate,
+                "model_name": config.model_name,
+                "speak_listen_mode": config.speak_listen_mode,
+                "max_length": config.max_length,
+                "batch_size": config.batch_size,
+                "eval_every": config.eval_every,
+                "epochs": config.no_epochs,
+                })
 
 
 
@@ -33,14 +35,18 @@ def main(config):
     train_dataloader, dev_dataloader, test_dataloader = create_dataloaders(config, tokenizer)
 
     model = AutoModelForSeq2SeqLM.from_pretrained(config.model_name).to(config.device)
+    # print(model)
+
+    scaler = torch.cuda.amp.GradScaler()
 
     ## Criterion and Schedulers
   
-    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate, eps=config.eps, weight_decay=config.weight_decay)
 
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+    config.total_steps = len(train_dataloader) * config.no_epochs
+    scheduler = get_scheduler(config, optimizer)
 
-    criterion = torch.nn.NLLLoss()
+    criterion = FocalLoss(gamma=2)
 
     no_steps = 0
     model.train()
@@ -50,13 +56,13 @@ def main(config):
         with tqdm(train_dataloader, unit="batch") as tepoch:
             for batch in tepoch:
                 tepoch.set_description(f"Epoch {epoch}")
-                training_loss_val = training_loop(model, batch, optimizer, criterion, scheduler)
+                training_loss_val = training_loop(model, batch, optimizer, criterion, scheduler, scaler, config.amp, config.device, config.max_grad_norm)
                 no_steps+=1
 
-                wandb.log({"Training Loss": training_loss_val})
+                # wandb.log({"Training Loss": training_loss_val})
 
                 if no_steps % config.eval_every == 0:
-                    dev_loss_val, output_generation = eval_loop(model, dev_dataloader, tokenizer, generate_sents=config.calc_score_at_eval)
+                    dev_loss_val, output_generation = eval_loop(model, dev_dataloader, tokenizer, config.device, generate_sents=config.calc_score_at_eval)
                     output_generation = [x.replace("<s>", "").replace("<s>", "").replace("<s>", "") for x in output_generation]
                     wandb.log({"Dev Loss": dev_loss_val})
                     if config.calc_score_at_eval:
@@ -67,7 +73,8 @@ def main(config):
                     print("F-0.5: " + str(f1))
                     print("Dev Loss: " + str(dev_loss_val))
 
-                    wandb.log({"Precision": p, "Recall": r, "F-0.5": f1})
+                    if config.wandb:
+                        wandb.log({"Precision": p, "Recall": r, "F-0.5": f1})
 
                     if dev_loss_val < previous_dev_loss:
                         save_model(model, config.model_saves_path + "_" + config.exp_name, no_steps)
@@ -82,37 +89,65 @@ def main(config):
 
     print("Done")
 
-def training_loop(model, batch, optimizer, criterion, scheduler):
+def training_loop(model, batch, optimizer, criterion, scheduler, scaler, amp, device, max_grad_norm):
 
     optimizer.zero_grad()
 
-    model_output = model(input_ids=batch[0], attention_mask=batch[2], labels=batch[1])
+    _input_ids = batch[0].to(device)
+    _attention_mask=batch[2].to(device)
+    _labels=batch[1].to(device)
 
-    loss = model_output.loss
+    with torch.cuda.amp.autocast(amp):
+        model_output = model(input_ids=_input_ids, attention_mask=_attention_mask, labels=_labels)
+        logits = torch.transpose(model_output.logits, 1, 2)
+        loss = criterion(logits, _labels)
 
-    loss.backward()
-    optimizer.step()
+    scaler.scale(loss).backward()
+    scaler.unscale_(optimizer)
+    grad = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+    scaler.step(optimizer)
+    scaler.update()
+    scheduler.step()
+    
 
     return loss.item()
 
-def eval_loop(model, dev_loader, tokenizer, generate_sents=False):
+def eval_loop(model, dev_loader, tokenizer, device, generate_sents=False):
     model.eval()
+
+    _input_ids = batch[0].to(device)
+    _attention_mask=batch[2].to(device)
+    _labels=batch[1].to(device)
     
     no_batches = 0
     accum_loss = 0
     for batch in tqdm(dev_loader): 
-        model_output = model(input_ids=batch[0], attention_mask=batch[2], labels=batch[1])
+        with torch.no_grad():
+            model_output = model_output = model(input_ids=_input_ids, attention_mask=_attention_mask, labels=_labels)
+            logits = torch.transpose(model_output.logits, 1, 2)
+            loss = criterion(logits, _labels)
+
         no_batches += 1
-        accum_loss += model_output.loss.item()
+        accum_loss += loss.item()
 
     output_generation = None
     if generate_sents:
         output_generation = generate(model, dev_loader, tokenizer)
 
-
     model.train()
 
     return accum_loss / no_batches, output_generation
+
+def get_scheduler(config, optimizer):
+
+    if config.scheduler == "OneCycleLR":
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, config.max_lr, total_steps=config.total_steps, pct_start=config.pct_start, cycle_momentum=False, div_factor=config.div_factor, final_div_factor=config.final_div_factor)
+    elif config.scheduler == "ReduceLROnPlateau":
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
+    else:
+        raise Exception("Scheduler not supported...")
+
+    return scheduler
 
 
 def save_model(model, path, step_no):

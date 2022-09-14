@@ -44,8 +44,8 @@ def create_dataloader(config, tokenizer, split="train"):
     dataset = GenderDataset(config, tokenized_source, tokenized_target, tokenizer.pad_token_id)
 
     shuffle_param = True if split == "train" else False
-    params = {'batch_size': config.batch_size,
-          'shuffle': shuffle_param}
+    params = {'batch_size': config.batch_size if split == "train" else config.batch_size*2,
+          'shuffle': shuffle_param, 'num_workers': config.num_workers}
 
     dataloader = torch.utils.data.DataLoader(dataset, **params)
 
@@ -64,13 +64,13 @@ class GenderDataset(torch.utils.data.Dataset):
   'Characterizes a dataset for PyTorch'
   def __init__(self, config, source_data, target_data, pad_token_id):
         'Initialization'
-        self.source_ids = source_data.input_ids.to(config.device)
+        self.source_ids = source_data.input_ids
         self.target_ids = target_data.input_ids
         self.target_ids = torch.tensor([
                 [(l if l != pad_token_id else -100) for l in label] for label in self.target_ids
-            ]).to(config.device)
-        self.source_masks = source_data.attention_mask.to(config.device)
-        self.target_masks = target_data.attention_mask.to(config.device)
+            ])
+        self.source_masks = source_data.attention_mask
+        self.target_masks = target_data.attention_mask
 
         assert self.source_ids.shape[0] == self.target_ids.shape[0] == self.source_masks.shape[0] == self.target_masks.shape[0]
 

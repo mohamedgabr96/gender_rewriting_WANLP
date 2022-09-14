@@ -1,0 +1,25 @@
+exp_name: FF_arat5msa_seq2seq
+data_path: /home/WANLP2022/Arabic-parallel-gender-corpus-v-2.1/data
+m2_edits_path: /home/WANLP2022/m2_edits
+model_saves_path: /home/WANLP2022/save_folder
+model_name: UBC-NLP/AraT5-msa-base # UBC-NLP/AraT5-msa-base
+speak_listen_mode: FF
+max_length: 128
+batch_size: 70
+no_epochs: 10
+eval_every: 1000
+learning_rate: 0.001
+scheduler: OneCycleLR
+max_lr: 0.001
+pct_start: 0.2
+div_factor: 25
+final_div_factor: 100
+max_grad_norm: 50
+num_workers: 4
+weight_decay: 1.e-5
+eps: 1.e-8
+
+device: cuda
+amp: false
+wandb: false
+calc_score_at_eval: true
