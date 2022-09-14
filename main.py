@@ -62,9 +62,9 @@ def main(config):
                 # wandb.log({"Training Loss": training_loss_val})
 
                 if no_steps % config.eval_every == 0:
-                    dev_loss_val, output_generation = eval_loop(model, dev_dataloader, tokenizer, config.device, generate_sents=config.calc_score_at_eval)
+                    dev_loss_val, output_generation = eval_loop(model, dev_dataloader, tokenizer, criterion, config.device, generate_sents=config.calc_score_at_eval)
                     output_generation = [x.replace("<s>", "").replace("<s>", "").replace("<s>", "") for x in output_generation]
-                    wandb.log({"Dev Loss": dev_loss_val})
+                    if config.wandb: wandb.log({"Dev Loss": dev_loss_val})
                     if config.calc_score_at_eval:
                         p, r, f1 = calculate_m2(output_generation, config.m2_edits_path, split='dev', specific_direction=config.speak_listen_mode)
 
@@ -112,16 +112,17 @@ def training_loop(model, batch, optimizer, criterion, scheduler, scaler, amp, de
 
     return loss.item()
 
-def eval_loop(model, dev_loader, tokenizer, device, generate_sents=False):
+def eval_loop(model, dev_loader, tokenizer, criterion , device, generate_sents=False):
     model.eval()
 
-    _input_ids = batch[0].to(device)
-    _attention_mask=batch[2].to(device)
-    _labels=batch[1].to(device)
+
     
     no_batches = 0
     accum_loss = 0
     for batch in tqdm(dev_loader): 
+        _input_ids = batch[0].to(device)
+        _attention_mask=batch[2].to(device)
+        _labels=batch[1].to(device)
         with torch.no_grad():
             model_output = model_output = model(input_ids=_input_ids, attention_mask=_attention_mask, labels=_labels)
             logits = torch.transpose(model_output.logits, 1, 2)
@@ -132,7 +133,7 @@ def eval_loop(model, dev_loader, tokenizer, device, generate_sents=False):
 
     output_generation = None
     if generate_sents:
-        output_generation = generate(model, dev_loader, tokenizer)
+        output_generation = generate(model, dev_loader, tokenizer, device)
 
     model.train()
 

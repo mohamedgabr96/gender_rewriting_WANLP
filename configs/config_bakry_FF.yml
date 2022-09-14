@@ -6,8 +6,8 @@ model_name: UBC-NLP/AraT5-msa-base # UBC-NLP/AraT5-msa-base
 speak_listen_mode: FF
 max_length: 128
 batch_size: 70
-no_epochs: 10
-eval_every: 1000
+no_epochs: 16
+eval_every: 800
 learning_rate: 0.001
 scheduler: OneCycleLR
 max_lr: 0.001

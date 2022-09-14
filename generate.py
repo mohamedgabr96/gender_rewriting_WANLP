@@ -1,11 +1,11 @@
 from tqdm import tqdm
 import numpy as np
 
-def generate(model, dataloader, tokenizer, DEBUG=False):
+def generate(model, dataloader, tokenizer, device, DEBUG=False):
     generated_data = None
     counter = 0
     for batch in tqdm(dataloader):
-        model_output = model.generate(input_ids=batch[0], max_length=32)
+        model_output = model.generate(input_ids=batch[0].to(device), max_length=32)
         temp_decoded_output = tokenizer.batch_decode(model_output.cpu().detach().numpy(), skip_special_tokens=True)
         if generated_data is None:
             generated_data = temp_decoded_output
