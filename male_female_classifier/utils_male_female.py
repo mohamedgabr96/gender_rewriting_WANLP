@@ -68,9 +68,10 @@ def tokenize_data(config, data_in, tokenizer, DEBUG=False):
     for sentence in tqdm(data_in):
         count += 1
         temp_list_sentence = []
+        temp_list_sentence.append([tokenizer.cls_token_id, 3])
         for word in sentence:
             word_str = word[0]
-            tokenized_word = tokenizer([word_str])["input_ids"][0][:-1]
+            tokenized_word = tokenizer([word_str])["input_ids"][0][1:-1]
             temp_list_sentence.append([tokenized_word[0], word[1]])
             for subword in tokenized_word[1:]:
                 temp_list_sentence.append([subword, 3])
@@ -79,9 +80,13 @@ def tokenize_data(config, data_in, tokenizer, DEBUG=False):
         if len(temp_list_sentence) > max_len_truncate:
             temp_list_sentence = temp_list_sentence[:max_len_truncate]
             if tokenizer.eos_token_id is not None:
+                if config.model_name == 'CAMeL-Lab/bert-base-arabic-camelbert-msa':
+                    temp_list_sentence.append(tokenizer.sep_token_id)
                 temp_list_sentence.append(tokenizer.eos_token_id)
         else:
             if tokenizer.eos_token_id is not None:
+                if config.model_name == 'CAMeL-Lab/bert-base-arabic-camelbert-msa':
+                    temp_list_sentence.append([tokenizer.sep_token_id, 3])
                 temp_list_sentence.append([tokenizer.eos_token_id, 3])
             while len(temp_list_sentence) < config.max_length:
                 temp_list_sentence.append([tokenizer.pad_token_id, 3])
@@ -106,8 +111,9 @@ def create_dataloader(config, tokenizer, split="train"):
     tokenized_data = tokenize_data(config, all_data_combined, tokenizer, DEBUG=False)
     dataset = SpeakerListenerDataset(config, tokenized_data)
 
+    shuffle_param = True if split == "train" else False
     params = {'batch_size': config.batch_size,
-          'shuffle': True}
+          'shuffle': shuffle_param}
 
     dataloader = torch.utils.data.DataLoader(dataset, **params)
 
@@ -134,10 +140,16 @@ class SpeakerListenerDataset(torch.utils.data.Dataset):
         return self.tokens_ids[index], self.labels_ids[index]
 
 
-def create_dataloaders(config, tokenizer):
-    train_dataloader = create_dataloader(config, tokenizer)
+def create_dataloaders(config, tokenizer, dont_train=False):
+    if dont_train:
+        train_dataloader = None
+    else:
+        train_dataloader = create_dataloader(config, tokenizer)
     dev_dataloader = create_dataloader(config, tokenizer, split="dev")
-    test_dataloader = create_dataloader(config, tokenizer, split="test")
+    if dont_train:
+        test_dataloader = None
+    else:
+        test_dataloader = create_dataloader(config, tokenizer, split="test")
 
     return train_dataloader, dev_dataloader, test_dataloader
 
