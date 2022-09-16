@@ -10,11 +10,11 @@
             "request": "launch",
             /// "program": "/mnt/default/zcodetasks/code/mogabr-codes/proj/main.py",
             // "program": "/mnt/default/zcodetasks/code/mogabr-codes/proj_git/gender_rewriting_WANLP/seq2seq_with_prefix/main.py",
-            "program": "/mnt/default/zcodetasks/code/mogabr-codes/proj_git/gender_rewriting_WANLP/full_pipeline/main.py",
+            "program": "/mnt/default/zcodetasks/code/mogabr-codes/proj_git/gender_rewriting_WANLP/male_female_classifier/main.py",
             //"program": "/mnt/default/zcodetasks/code/mogabr-codes/proj_git/gender_rewriting_WANLP/speaker_listener_classifier/main.py",
             // "program": "/mnt/default/zcodetasks/code/mogabr-codes/proj_git/gender_rewriting_WANLP/alignment_dict/dict_aligner.py",
             "console": "integratedTerminal",
-            "args": ["--config_path", "./full_pipeline/config.yml"],
+            "args": ["--config_path", "./male_female_classifier/config_camel_bert.yml"],
             "justMyCode": true
         }
     ]

@@ -18,44 +18,45 @@ def load_normal_data_speaker_listener(path, split="train", direction="MF", augme
     # FM: female speaking to a male
 
     augmented_string = ".augmented" if augmented else ""
+    augmented_remove = -1 if augmented else 0
 
-    with open(os.path.join(path, split, f"{split}.arin.tokens" + augmented_string), encoding="utf-8") as file_opened:
+    with open(os.path.join(path, split, f"{split}.arin.tokens.extended" + augmented_string), encoding="utf-8") as file_opened:
         source = file_opened.readlines()
 
     sentences_list_source = []
     sentence_temp_list = []
     for line in source:
-        if line == '\n':
+        if line.strip(" ") == '\n':
             sentences_list_source.append(sentence_temp_list)
             sentence_temp_list = []
         else:
             temp_line = line.strip("\n").split(" ")
-            if temp_line[2][0] == "1" or temp_line[2][0] == "2":
-                word = temp_line[1]
-                label = int(temp_line[2][0])
+            if temp_line[2+augmented_remove][0] == "1" or temp_line[2+augmented_remove][0] == "2":
+                word = temp_line[1+augmented_remove]
+                label = int(temp_line[2+augmented_remove][0])
             else:
-                word = temp_line[1]
+                word = temp_line[1+augmented_remove]
                 label = 0
             sentence_temp_list.append([word, label])
     
     # source = [x.replace("</s>", "").replace("</s>", "").replace("</s>", "") for x in source]
 
-    with open(os.path.join(path, split, f"{split}.ar.{direction}.tokens" + augmented_string), encoding="utf-8") as file_opened:
+    with open(os.path.join(path, split, f"{split}.ar.{direction}.tokens.extended" + augmented_string), encoding="utf-8") as file_opened:
         target = file_opened.readlines()
 
     sentences_list_target = []
     sentence_temp_list = []
     for line in target:
-        if line == '\n':
+        if line.strip(" ") == '\n':
             sentences_list_target.append(sentence_temp_list)
             sentence_temp_list = []
         else:
             temp_line = line.strip("\n").split(" ")
-            if temp_line[2][0] == "1" or temp_line[2][0] == "2":
-                word = temp_line[1]
-                label = int(temp_line[2][0])
+            if temp_line[2+augmented_remove][0] == "1" or temp_line[2+augmented_remove][0] == "2":
+                word = temp_line[1+augmented_remove]
+                label = int(temp_line[2+augmented_remove][0])
             else:
-                word = temp_line[1]
+                word = temp_line[1+augmented_remove]
                 label = 0
             sentence_temp_list.append([word, label])
     
@@ -101,10 +102,14 @@ def tokenize_data(config, data_in, tokenizer, DEBUG=False):
 
 
 def create_dataloader(config, tokenizer, split="train", source_data_only=False):
-    source_data, target_data_MM = load_normal_data_speaker_listener(config.data_path, split=split, direction="MM")
-    _, target_data_MF = load_normal_data_speaker_listener(config.data_path, split=split, direction="MF")
-    _, target_data_FM = load_normal_data_speaker_listener(config.data_path, split=split, direction="FM")
-    _, target_data_FF = load_normal_data_speaker_listener(config.data_path, split=split, direction="FF")
+    use_augmented = False
+    if config.use_augmented and split=="train":
+        use_augmented = True
+
+    source_data, target_data_MM = load_normal_data_speaker_listener(config.data_path, split=split, direction="MM", augmented=use_augmented)
+    _, target_data_MF = load_normal_data_speaker_listener(config.data_path, split=split, direction="MF" , augmented=use_augmented)
+    _, target_data_FM = load_normal_data_speaker_listener(config.data_path, split=split, direction="FM" , augmented=use_augmented)
+    _, target_data_FF = load_normal_data_speaker_listener(config.data_path, split=split, direction="FF" , augmented=use_augmented)
 
     all_data_combined = source_data + target_data_MM + target_data_MF + target_data_FM + target_data_FF
 
