@@ -6,7 +6,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(sys.path[0]))
 from generate import generate
-from utils_w_prefix import yaml_loader, create_dataloaders
+from utils_no_prefix import yaml_loader, create_dataloaders
 import wandb
 from m2_calculation import calculate_m2
 from tqdm import tqdm, trange
