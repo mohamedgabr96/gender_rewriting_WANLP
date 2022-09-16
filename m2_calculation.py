@@ -68,7 +68,7 @@ def load_annotation(gold_file):
 
 def calculate_m2(generated_sents, m2_edits_path, split='dev', specific_direction=None):
 
-    indexes_dict = {"FF": [0, 6647], "FM":[6647, 6647*2] , "MF": [6647*2, 6647*3], "MM": [6647*3, 6647*4]}
+    indexes_dict = {"MM": [0, 6647], "FM":[6647, 6647*2] , "MF": [6647*2, 6647*3], "FF": [6647*3, 6647*4]}
 
     system_sentences = normalize(generated_sents)
     system_sentences = [x.strip() for x in system_sentences]

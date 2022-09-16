@@ -3,11 +3,13 @@ import os
 import sys
 import torch
 import wandb
+import json
 import numpy as np
 from argparse import Namespace
 import argparse
 sys.path.append(os.path.dirname(sys.path[0]))
 from utils import yaml_loader
+from m2_calculation import calculate_m2
 from speaker_listener_classifier.utils_speaker_listener import create_dataloaders as create_dataloaders_splis
 from speaker_listener_classifier.utils_speaker_listener import load_normal_data_speaker_listener
 from male_female_classifier.utils_male_female import create_dataloaders as create_dataloaders_gender
@@ -33,8 +35,8 @@ def main(config):
 
     tokenizer = AutoTokenizer.from_pretrained(config.model_name, use_fast=False)
 
-    _, dev_dataloader_gender, _ = create_dataloaders_gender(config, tokenizer, dont_train=True)
-    _, dev_dataloader_speak_listen, _ = create_dataloaders_splis(config, tokenizer, dont_train=True)
+    _, dev_dataloader_gender, _ = create_dataloaders_gender(config, tokenizer, dont_train=True, source_data_only=True)
+    _, dev_dataloader_speak_listen, _ = create_dataloaders_splis(config, tokenizer, dont_train=True, source_data_only=True)
 
     normal_sentences_dev, _ = load_normal_data_speaker_listener(config.data_path, split="dev", direction=config.speak_listen_mode)
     normal_sentences_dev = [[x[0] for x in y] for y in normal_sentences_dev]
@@ -68,6 +70,7 @@ def main(config):
     counter = 0
     counter_fallback_words = 0
     total_number_of_words = 0
+    counter_fallback_seq2seq = 0
     all_new_sentences = []
     wanted_direction = config.speak_listen_mode
     dict_opposite_direction = {"M": "FEMALE", "F": "MALE"}
@@ -94,6 +97,10 @@ def main(config):
                         res1, res2 = search_with_prefix(text_word, seq2seq_data_generation[counter])
                         new_word = res2[0] if len(res2) > 0 else "dummy"
                         counter_fallback_words += 1 if new_word == "dummy" else 0
+                        if new_word != "dummy":
+                            counter_fallback_seq2seq += 1
+                        else:
+                            new_word = text_word
                     else:
                         new_word = changed_word
 
@@ -105,8 +112,28 @@ def main(config):
 
 
             counter += 1
-            all_new_sentences.append(new_sentence)
+            all_new_sentences.append(" ".join(new_sentence))
 
+    ## Calculate score
+    p, r, f1 = calculate_m2(all_new_sentences, config.m2_edits_path, split='dev', specific_direction=config.speak_listen_mode)
+
+    path_to_file = os.path.join(config.output_save_location, f"arin.to.{config.speak_listen_mode}")
+    path_to_result_json = os.path.join(config.output_save_location, f"results_{config.speak_listen_mode}_scores.json")
+
+    if not os.path.exists(config.output_save_location):
+        os.makedirs(config.output_save_location)
+
+    with open(path_to_file, encoding="utf-8", mode="w") as file_opened:
+        for sent in all_new_sentences:
+            file_opened.write(sent + "\n")
+
+    with open(path_to_result_json, encoding="utf-8", mode="w") as file_opened:
+        json_to_dump = {
+            "Precision": p,
+            "Recall": r,
+            "F-05": f1
+        }
+        json.dump(json_to_dump, file_opened)
 
     print("Done")
 
@@ -180,10 +207,15 @@ def load_seq2seq_generation(path_to_file):
     return lines_read
 
 def search_with_prefix(word, sentence):
+    K = 3
+    k_len_subs = [word[i: j] for i in range(len(word)) for j in range(i + 1, len(word) + 1) if len(word[i:j]) == K]
     l = sentence.split(" ")
-    result1 = list(filter(lambda x: x.startswith(word), l))
+    result1 = []
+    result2 = []
+    for k_len_sub in k_len_subs:
+        result1 += list(filter(lambda x: x.startswith(k_len_sub), l))
 
-    result2 = list(filter(lambda x: word in x, l))
+        result2 += list(filter(lambda x: k_len_sub in x, l))
 
     return result1, result2
 

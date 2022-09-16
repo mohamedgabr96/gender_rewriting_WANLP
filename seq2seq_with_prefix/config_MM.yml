@@ -1,0 +1,13 @@
+exp_name: MM_arat5msa_seq2seq
+data_path: /mnt/default/zcodetasks/code/mogabr-codes/proj_data/Arabic-parallel-gender-corpus-v-2.1/data
+m2_edits_path: /mnt/default/zcodetasks/code/mogabr-codes/proj_data/m2_edits
+model_saves_path: ./save_folder
+model_name: UBC-NLP/AraT5-msa-base # UBC-NLP/AraT5-msa-base
+speak_listen_mode: MM
+max_length: 128
+batch_size: 16
+no_epochs: 30
+eval_every: 1000
+learning_rate: 0.0001
+device: cuda
+calc_score_at_eval: true

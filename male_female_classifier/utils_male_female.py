@@ -100,13 +100,16 @@ def tokenize_data(config, data_in, tokenizer, DEBUG=False):
     return new_sentence_list
 
 
-def create_dataloader(config, tokenizer, split="train"):
+def create_dataloader(config, tokenizer, split="train", source_data_only=False):
     source_data, target_data_MM = load_normal_data_speaker_listener(config.data_path, split=split, direction="MM")
     _, target_data_MF = load_normal_data_speaker_listener(config.data_path, split=split, direction="MF")
     _, target_data_FM = load_normal_data_speaker_listener(config.data_path, split=split, direction="FM")
     _, target_data_FF = load_normal_data_speaker_listener(config.data_path, split=split, direction="FF")
 
     all_data_combined = source_data + target_data_MM + target_data_MF + target_data_FM + target_data_FF
+
+    if source_data_only:
+        all_data_combined = source_data
 
     tokenized_data = tokenize_data(config, all_data_combined, tokenizer, DEBUG=False)
     dataset = SpeakerListenerDataset(config, tokenized_data)
@@ -140,17 +143,16 @@ class SpeakerListenerDataset(torch.utils.data.Dataset):
         return self.tokens_ids[index], self.labels_ids[index]
 
 
-def create_dataloaders(config, tokenizer, dont_train=False):
+def create_dataloaders(config, tokenizer, dont_train=False, source_data_only=False):
     if dont_train:
         train_dataloader = None
     else:
-        train_dataloader = create_dataloader(config, tokenizer)
-    dev_dataloader = create_dataloader(config, tokenizer, split="dev")
+        train_dataloader = create_dataloader(config, tokenizer, source_data_only=source_data_only)
+    dev_dataloader = create_dataloader(config, tokenizer, split="dev", source_data_only=source_data_only)
     if dont_train:
         test_dataloader = None
     else:
-        test_dataloader = create_dataloader(config, tokenizer, split="test")
-
+        test_dataloader = create_dataloader(config, tokenizer, split="test", source_data_only=source_data_only)
     return train_dataloader, dev_dataloader, test_dataloader
 
 
