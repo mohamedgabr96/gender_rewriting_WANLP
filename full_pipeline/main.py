@@ -41,7 +41,16 @@ def main(config):
     normal_sentences_dev, _ = load_normal_data_speaker_listener(config.data_path, split="dev", direction=config.speak_listen_mode)
     normal_sentences_dev = [[x[0] for x in y] for y in normal_sentences_dev]
 
-    seq2seq_data_generation = load_seq2seq_generation(config.path_to_s2s_generation)
+    if config.speak_listen_mode == "FF":
+        seq_to_seq_generation_path = config.path_to_s2s_generation
+    elif config.speak_listen_mode == "MF":
+        seq_to_seq_generation_path = config.path_to_s2s_generation_MF
+    elif config.speak_listen_mode == "FM":
+        seq_to_seq_generation_path = config.path_to_s2s_generation_FM
+    elif config.speak_listen_mode == "MM":
+        seq_to_seq_generation_path = config.path_to_s2s_generation_MM
+
+    seq2seq_data_generation = load_seq2seq_generation(seq_to_seq_generation_path)
 
     gender_model = AutoModelForTokenClassification.from_pretrained(config.path_gender_identifier).to(config.device)
     speaker_listener_model = AutoModelForTokenClassification.from_pretrained(config.path_speaker_listener_identifier).to(config.device)
@@ -64,7 +73,7 @@ def main(config):
     _, _, _, speak_listen_logits, labels_attend_on_speak_listen = eval_loop_tokens(speaker_listener_model, dev_dataloader_speak_listen, tokenizer)
 
     # Create aligner 
-    alignment_dict = create_dict_mapper(config.data_path)
+    alignment_dict = create_dict_mapper(config.data_path, aug=True)
 
     ## Get the stuff that needs to change based on the direction
     counter = 0
@@ -92,6 +101,7 @@ def main(config):
                 if word in word_combinations_to_change:
                     text_word = sent_text[word_index]
                     changed_word = alignment_dict.get(text_word, None)
+                    changed_word = None
                     if changed_word is None:
                         new_word = "dummy" ## Fallback not implemented yet
                         res1, res2 = search_with_prefix(text_word, seq2seq_data_generation[counter])
@@ -133,6 +143,7 @@ def main(config):
             "Recall": r,
             "F-05": f1
         }
+        print(json_to_dump)
         json.dump(json_to_dump, file_opened)
 
     print("Done")
